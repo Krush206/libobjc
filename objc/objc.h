@@ -55,7 +55,7 @@ typedef const struct objc_selector
   const char *sel_types;
 } *SEL;
 
-inline static BOOL
+static inline BOOL
 sel_eq (SEL s1, SEL s2)
 {
   if (s1 == 0 || s2 == 0)

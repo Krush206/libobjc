@@ -25,7 +25,6 @@ Boston, MA 02110-1301, USA.  */
    This exception does not however invalidate any other reasons why
    the executable file might be covered by the GNU General Public License.  */
 
-#include "tconfig.h"
 #include "objc/objc.h"
 #include "objc/encoding.h"
 
@@ -35,7 +34,7 @@ Boston, MA 02110-1301, USA.  */
 
 #if OBJC_WITH_GC
 
-#include <gc.h>
+#include <gc/gc.h>
 #include <limits.h>
 
 /* gc_typed.h uses the following but doesn't declare them */
@@ -43,7 +42,7 @@ typedef GC_word word;
 typedef GC_signed_word signed_word;
 #define BITS_PER_WORD (CHAR_BIT * sizeof (word))
 
-#include <gc_typed.h>
+#include <gc/gc_typed.h>
 
 /* The following functions set up in `mask` the corresponding pointers.
    The offset is incremented with the size of the type.  */
@@ -333,7 +332,7 @@ __objc_generate_gc_type_description (Class class)
   puts ("");
 #endif
 
-  class->gc_object_type = (void *) GC_make_descriptor (mask, bits_no);
+  class->gc_object_type = GC_make_descriptor (mask, bits_no);
 }
 
 

@@ -24,12 +24,12 @@ Boston, MA 02110-1301, USA.  */
    however invalidate any other reasons why the executable file might be
    covered by the GNU General Public License.  */
 
-#include "tconfig.h"         /* include defs of bzero for target */
 #include "objc/objc.h"
 #include "objc/runtime.h"		/* the kitchen sink */
 
 #if OBJC_WITH_GC
-# include <gc.h>
+# include <gc/gc.h>
+# include <gc/gc_typed.h>
 #endif
 
 id __objc_object_alloc (Class);

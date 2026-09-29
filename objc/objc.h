@@ -32,6 +32,7 @@ extern "C" {
 #endif
 
 #include <stddef.h>
+#include <gc/gc_typed.h>
 
 /*
 ** Definition of the boolean type.  
@@ -133,7 +134,7 @@ struct objc_class {
   struct objc_class* sibling_class;
 
   struct objc_protocol_list *protocols;	      /* Protocols conformed to */
-  void* gc_object_type;
+  GC_descr gc_object_type;
 };
 
 #ifndef __OBJC__

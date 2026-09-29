@@ -513,10 +513,10 @@ class_set_version(Class _class, long version)
     _class->version = version;
 }
 
-static inline void *
+static inline GC_descr
 class_get_gc_object_type (Class _class)
 {
-  return CLS_ISCLASS(_class) ? _class->gc_object_type : NULL;
+  return CLS_ISCLASS(_class) ? _class->gc_object_type : (GC_descr) 0;
 }
 
 /* Mark the instance variable as innaccessible to the garbage collector */

@@ -92,7 +92,7 @@ Method_t search_for_method_in_list (MethodList_t list, SEL op);
 id nil_method (id, SEL);
 
 /* Given a selector, return the proper forwarding implementation. */
-inline
+
 IMP
 __objc_get_forward_imp (id rcv, SEL sel)
 {
@@ -207,7 +207,7 @@ get_implementation (id receiver, Class class, SEL sel)
   return res;
 }
 
-inline
+
 IMP
 get_imp (Class class, SEL sel)
 {
@@ -233,7 +233,7 @@ get_imp (Class class, SEL sel)
    Since this requires the dispatch table to installed, this function
    will implicitly invoke +initialize for the class of OBJECT if it
    hasn't been invoked yet.  */
-inline
+
 BOOL
 __objc_responds_to (id object, SEL sel)
 {
@@ -270,7 +270,7 @@ __objc_responds_to (id object, SEL sel)
 /* This is the lookup function.  All entries in the table are either a 
    valid method *or* zero.  If zero then either the dispatch table
    needs to be installed or it doesn't exist and forwarding is attempted. */
-inline
+
 IMP
 objc_msg_lookup (id receiver, SEL op)
 {
@@ -656,7 +656,7 @@ __objc_print_dtable_stats ()
 /* Returns the uninstalled dispatch table indicator.
  If a class' dispatch table points to __objc_uninstalled_dtable
  then that means it needs its dispatch table to be installed. */
-inline
+
 struct sarray *
 objc_get_uninstalled_dtable ()
 {

@@ -555,7 +555,7 @@ objc_promoted_size (const char *type)
   occurring in method prototype encodings.
 */
 
-inline const char *
+const char *
 objc_skip_type_qualifiers (const char *type)
 {
   while (*type == _C_CONST
@@ -695,7 +695,7 @@ objc_skip_typespec (const char *type)
   For historical reasons this is buggy and actually skips an extra byte
   whether there is an offset or not.
 */
-inline const char *
+const char *
 objc_skip_offset (const char *type)
 {
   if (*type == '+')

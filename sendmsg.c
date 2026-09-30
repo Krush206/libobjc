@@ -36,6 +36,8 @@ Boston, MA 02110-1301, USA.  */
 #include "objc/sarray.h"
 #include "objc/encoding.h"
 #include "runtime-info.h"
+#include <ffi.h>
+#include <stdlib.h>
 
 /* This is how we hack STRUCT_VALUE to be 1 or 0.   */
 #define gen_rtx(args...) 1
@@ -298,18 +300,281 @@ objc_msg_lookup_super (Super_t super, SEL sel)
     return (IMP)nil_method;
 }
 
-int method_get_sizeof_arguments (Method *);
+/* Return an ffi type corresponding to an Objective-C type encoding.  Types
+   returned through TYPE must be released with __objc_free_ffi_type.  */
+static ffi_type *
+__objc_ffi_type (const char *encoding);
+
+static void
+__objc_free_ffi_type (ffi_type *type)
+{
+  if (!type
+      || type == &ffi_type_void
+      || type == &ffi_type_uint8
+      || type == &ffi_type_sint8
+      || type == &ffi_type_uint16
+      || type == &ffi_type_sint16
+      || type == &ffi_type_uint32
+      || type == &ffi_type_sint32
+      || type == &ffi_type_uint64
+      || type == &ffi_type_sint64
+      || type == &ffi_type_float
+      || type == &ffi_type_double
+      || type == &ffi_type_pointer)
+    return;
+
+  if (type->elements)
+    {
+      ffi_type **element;
+      for (element = type->elements; *element; element++)
+        __objc_free_ffi_type (*element);
+      free (type->elements);
+    }
+  free (type);
+}
+
+static ffi_type *
+__objc_new_ffi_struct (ffi_type **elements)
+{
+  ffi_type *type = calloc (1, sizeof (*type));
+  if (!type)
+    {
+      free (elements);
+      return NULL;
+    }
+  type->type = FFI_TYPE_STRUCT;
+  type->elements = elements;
+  return type;
+}
+
+static ffi_type *
+__objc_ffi_aggregate_type (const char *encoding, int array)
+{
+  const char *member;
+  const char *end;
+  ffi_type **elements;
+  size_t count = 0;
+  size_t capacity = 4;
+
+  if (array)
+    {
+      int length = atoi (++encoding);
+      while (isdigit ((unsigned char) *encoding))
+        encoding++;
+      member = encoding;
+      end = objc_skip_typespec (member);
+      if (length < 0 || *end != _C_ARY_E)
+        return NULL;
+      capacity = length ? (size_t) length : 1;
+      elements = calloc (capacity + 1, sizeof (*elements));
+      if (!elements)
+        return NULL;
+      while (count < (size_t) length)
+        {
+          elements[count] = __objc_ffi_type (member);
+          if (!elements[count++])
+            {
+              while (count)
+                __objc_free_ffi_type (elements[--count]);
+              free (elements);
+              return NULL;
+            }
+        }
+      return __objc_new_ffi_struct (elements);
+    }
+
+  /* Structures are encoded as {name=member...}.  A name without an '='
+     describes an opaque structure, which cannot be passed by value.  */
+  member = encoding + 1;
+  while (*member && *member != '=' && *member != _C_STRUCT_E)
+    member++;
+  if (*member != '=')
+    return NULL;
+  member++;
+
+  elements = calloc (capacity + 1, sizeof (*elements));
+  if (!elements)
+    return NULL;
+  while (*member && *member != _C_STRUCT_E)
+    {
+      ffi_type **new_elements;
+      ffi_type *element = __objc_ffi_type (member);
+
+      if (!element)
+        goto fail;
+      if (count == capacity)
+        {
+          capacity *= 2;
+          new_elements = realloc (elements,
+                                  (capacity + 1) * sizeof (*elements));
+          if (!new_elements)
+            {
+              __objc_free_ffi_type (element);
+              goto fail;
+            }
+          elements = new_elements;
+        }
+      elements[count++] = element;
+      member = objc_skip_typespec (member);
+    }
+  if (*member != _C_STRUCT_E)
+    goto fail;
+  elements[count] = NULL;
+  return __objc_new_ffi_struct (elements);
+
+ fail:
+  while (count)
+    __objc_free_ffi_type (elements[--count]);
+  free (elements);
+  return NULL;
+}
+
+static ffi_type *
+__objc_ffi_type (const char *encoding)
+{
+  ffi_type **elements;
+  ffi_type *element;
+
+  encoding = objc_skip_type_qualifiers (encoding);
+  if (*encoding == '"')
+    {
+      do
+        encoding++;
+      while (*encoding && *encoding++ != '"');
+      encoding = objc_skip_type_qualifiers (encoding);
+    }
+
+  switch (*encoding)
+    {
+    case _C_VOID:     return &ffi_type_void;
+    case _C_BOOL:
+    case _C_UCHR:     return &ffi_type_uint8;
+    case _C_CHR:      return &ffi_type_sint8;
+    case _C_USHT:     return &ffi_type_uint16;
+    case _C_SHT:      return &ffi_type_sint16;
+    case _C_UINT:     return &ffi_type_uint32;
+    case _C_INT:      return &ffi_type_sint32;
+    case _C_ULNG:
+      return sizeof (unsigned long) == 8 ? &ffi_type_uint64 : &ffi_type_uint32;
+    case _C_LNG:
+      return sizeof (long) == 8 ? &ffi_type_sint64 : &ffi_type_sint32;
+    case _C_ULNG_LNG: return &ffi_type_uint64;
+    case _C_LNG_LNG:  return &ffi_type_sint64;
+    case _C_FLT:      return &ffi_type_float;
+    case _C_DBL:      return &ffi_type_double;
+    case _C_ID:
+    case _C_CLASS:
+    case _C_SEL:
+    case _C_PTR:
+    case _C_CHARPTR:
+    case _C_ATOM:     return &ffi_type_pointer;
+    case _C_ARY_B:    return __objc_ffi_aggregate_type (encoding, 1);
+    case _C_STRUCT_B: return __objc_ffi_aggregate_type (encoding, 0);
+    case _C_COMPLEX:
+      element = __objc_ffi_type (encoding + 1);
+      if (!element)
+        return NULL;
+      elements = calloc (3, sizeof (*elements));
+      if (!elements)
+        {
+          __objc_free_ffi_type (element);
+          return NULL;
+        }
+      elements[0] = element;
+      elements[1] = __objc_ffi_type (encoding + 1);
+      if (!elements[1])
+        {
+          __objc_free_ffi_type (element);
+          free (elements);
+          return NULL;
+        }
+      return __objc_new_ffi_struct (elements);
+    default:
+      return NULL;
+    }
+}
 
 retval_t
 objc_msg_sendv (id object, SEL op, arglist_t arg_frame)
 {
   Method *m = class_get_instance_method (object->class_pointer, op);
-  const char *type;
-  *((id *) method_get_first_argument (m, arg_frame, &type)) = object;
-  *((SEL *) method_get_next_argument (arg_frame, &type)) = op;
-  return __builtin_apply ((apply_t) m->method_imp, 
-			  arg_frame,
-			  method_get_sizeof_arguments (m));
+  const char *type = m->method_types;
+  const char *argument_type;
+  ffi_cif cif;
+  ffi_type *return_type;
+  ffi_type **argument_types;
+  void **arguments;
+  void *result;
+  size_t argument_count = 0;
+  size_t i;
+
+  return_type = __objc_ffi_type (type);
+  if (!return_type)
+    {
+      objc_error (object, OBJC_ERR_BAD_TYPE,
+                  "cannot marshal return type %s with libffi\n", type);
+      return NULL;
+    }
+
+  for (argument_type = objc_skip_argspec (type); *argument_type;
+       argument_type = objc_skip_argspec (argument_type))
+    argument_count++;
+
+  argument_types = calloc (argument_count, sizeof (*argument_types));
+  arguments = calloc (argument_count, sizeof (*arguments));
+  if (!argument_types || !arguments)
+    goto fail;
+
+  for (i = 0, argument_type = objc_skip_argspec (type);
+       i < argument_count; i++,
+       argument_type = objc_skip_argspec (argument_type))
+    {
+      argument_types[i] = __objc_ffi_type (argument_type);
+      if (!argument_types[i])
+        {
+          objc_error (object, OBJC_ERR_BAD_TYPE,
+                      "cannot marshal argument type %s with libffi\n",
+                      argument_type);
+          goto fail;
+        }
+    }
+
+  if (ffi_prep_cif (&cif, FFI_DEFAULT_ABI, argument_count, return_type,
+                    argument_types) != FFI_OK)
+    {
+      objc_error (object, OBJC_ERR_BAD_TYPE,
+                  "cannot prepare libffi call interface for %s\n", type);
+      goto fail;
+    }
+
+  for (i = 0, argument_type = type; i < argument_count; i++)
+    {
+      arguments[i] = method_get_next_argument (arg_frame, &argument_type);
+    }
+  *((id *) arguments[0]) = object;
+  *((SEL *) arguments[1]) = op;
+
+  result = return_type == &ffi_type_void ? NULL
+    : malloc (return_type->size ? return_type->size : 1);
+  if (return_type != &ffi_type_void && !result)
+    goto fail;
+  ffi_call (&cif, FFI_FN (m->method_imp), result, arguments);
+
+  for (i = 0; i < argument_count; i++)
+    __objc_free_ffi_type (argument_types[i]);
+  free (argument_types);
+  free (arguments);
+  __objc_free_ffi_type (return_type);
+  return result;
+
+ fail:
+  if (argument_types)
+    for (i = 0; i < argument_count; i++)
+      __objc_free_ffi_type (argument_types[i]);
+  free (argument_types);
+  free (arguments);
+  __objc_free_ffi_type (return_type);
+  return NULL;
 }
 
 void

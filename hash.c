@@ -119,9 +119,9 @@ objc_hash_add (cache_ptr *cachep, const void *key, void *value)
   node->value  = value;
   node->next  = (*cachep)->node_table[indx];
 
+#if 0
   /* Debugging.
      Check the list for another key.  */
-#ifdef DEBUG
   { node_ptr node1 = (*cachep)->node_table[indx];
 
     while (node1) {

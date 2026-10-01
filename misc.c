@@ -147,7 +147,7 @@ objc_free (void *mem)
 */
 
 #if OBJC_WITH_GC
-#include <gc.h>
+#include <gc/gc.h>
 
 static void *
 GC_calloc (size_t nelem, size_t size)
